@@ -64,15 +64,15 @@ fn main() -> Result<(), ExitFailure> {
         .template("[{elapsed_precise}] {bar:50.cyan/blue} {pos:>4}/{len:4} {msg}")
         .progress_chars("##-"));
 
+    /*
     for _ in 1..100 {
-        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::thread::sleep(std::time::Duration::from_millis(10));
         //pb.println(format!("[+] finished #{}", i));
         pb.inc(1);
     }
     pb.finish_with_message("done");
+    */
 
-    println!("Read `{}`", &path.to_str().unwrap());
-    println!("{:?}", &proj);
     Ok(())
 }
 

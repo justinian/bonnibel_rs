@@ -1,22 +1,31 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
 #[derive(Debug, failure::Fail)]
 pub enum BonnibelError {
-    #[fail(display = "Error opening file")]
-    OpenFile(std::io::Error),
+    #[fail(display = "opening file {:?}: {:?}", file, orig)]
+    OpenFile {
+        file: PathBuf,
+        orig: std::io::Error
+    },
 
-    #[fail(display = "Error parsing config")]
-    ParseFile(serde_yaml::Error),
+    #[fail(display = "parsing config: {:?}", orig)]
+    ParseFile {
+        orig: serde_yaml::Error
+    },
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Module {
     #[serde(alias = "deps")]
-    depends: Option<Vec<String>>,
-    defines: Option<HashMap<String, String>>,
+    #[serde(default)]
+    depends: Vec<String>,
+
+    #[serde(default)]
+    defines: Vec<String>,
+
     output: PathBuf,
     source: Vec<String>,
 
@@ -29,7 +38,8 @@ pub struct Module {
 pub enum ModuleKind {
     #[serde(rename = "lib")]
     Library {
-        includes: Option<Vec<PathBuf>>,
+        #[serde(default)]
+        includes: Vec<PathBuf>,
     },
 
     #[serde(rename = "exe")]
@@ -42,17 +52,51 @@ pub enum ModuleKind {
 pub struct Project {
     pub name: String,
     templates: PathBuf,
-    vars: Option<HashMap<String, String>>,
+
+    #[serde(default)]
+    vars: HashMap<String, String>,
+
     pub modules: HashMap<String, Module>,
+
+    #[serde(skip)]
+    targets: HashMap<String, HashSet<String>>,
 }
 
 impl Project {
     pub fn load(filename: &Path) -> Result<Project, BonnibelError> {
         let config = std::fs::read_to_string(filename)
-            .map_err(BonnibelError::OpenFile)?;
+            .map_err(|e| BonnibelError::OpenFile {file: filename.to_path_buf(), orig: e})?;
 
-        let proj: Project = serde_yaml::from_str(&config)
-            .map_err(BonnibelError::ParseFile)?;
+        let mut proj: Project = serde_yaml::from_str(&config)
+            .map_err(|e| BonnibelError::ParseFile {orig: e})?;
+
+        // Start each target off with its list of roots
+        for (name, module) in proj.modules.iter() {
+            if let ModuleKind::Executable { target } = &module.kind {
+                proj.targets.entry(target.to_string())
+                    .or_insert(HashSet::new())
+                    .insert(name.to_string());
+            }
+        }
+
+        // Walk the dependency graph and build a list of all required modules for each target
+        for (name, target_modules) in proj.targets.iter_mut() {
+            let mut open_list: Vec<String> = target_modules.drain().collect();
+            loop {
+                if let Some(dep) = open_list.pop() {
+                    let module = &proj.modules[&dep];
+                    target_modules.insert(dep);
+
+                    for subdep in module.depends.iter() {
+                        if !target_modules.contains(subdep) {
+                            open_list.push(subdep.to_string());
+                        }
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
 
         Ok(proj)
     }
