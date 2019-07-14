@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error as StdError;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use failure::{err_msg, Fail, ResultExt};
@@ -113,8 +114,18 @@ impl Project {
                 ctx.insert("buildfile", &build_file);
                 ctx.insert("vars", &self.vars);
                 ctx.insert("depmods", &m.depmods(self)?);
+                ctx.insert("deplibs", &m.deplibs(self)?);
+                ctx.insert("depexes", &m.depexes(self)?);
 
-                println!("{}", tera.render(t.as_str(), ctx).map_err(tera_failure)?);
+                let contents = tera.render(t.as_str(), ctx)
+                    .map_err(tera_failure)?
+                    .into_bytes();
+
+                let mut build_file_out = std::fs::File::create(build_file)
+                    .context("creating build file")?;
+
+                build_file_out.write_all(&contents)
+                    .context("writing build file contents")?;
             }
         }
 

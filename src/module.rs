@@ -9,12 +9,22 @@ type Result<T> = std::result::Result<T, failure::Error>;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(from = "PathBuf")]
 pub struct SourceItem {
+    name: String,
     input: PathBuf,
+    output: PathBuf,
+    action: String,
 }
 
 impl From<PathBuf> for SourceItem {
     fn from(s: PathBuf) -> Self {
-        SourceItem { input: s }
+        let action = s.extension().map(|s| s.to_str().unwrap()).unwrap_or("unknown").to_string();
+
+        SourceItem {
+            name: s.file_name().map(|s| s.to_str().unwrap()).unwrap_or("unnamed").to_string(),
+            output: s.with_extension(format!("{}.o", action)),
+            input: s,
+            action: action,
+        }
     }
 }
 
@@ -62,6 +72,22 @@ impl Module {
             v.push(proj.module(&name.as_str())?);
         }
         Ok(v)
+    }
+
+    pub fn deplibs<'a>(&self, proj: &'a Project) -> Result<Vec<&'a Module>> {
+        Ok(self.depmods(proj)?
+           .iter()
+           .filter(|m| match m.kind { ModuleKind::Library { .. } => true, _ => false })
+           .map(|m| *m)
+           .collect())
+    }
+
+    pub fn depexes<'a>(&self, proj: &'a Project) -> Result<Vec<&'a Module>> {
+        Ok(self.depmods(proj)?
+           .iter()
+           .filter(|m| match m.kind { ModuleKind::Executable { .. } => true, _ => false })
+           .map(|m| *m)
+           .collect())
     }
 }
 
