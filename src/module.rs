@@ -6,23 +6,15 @@ use super::Project;
 
 type Result<T> = std::result::Result<T, failure::Error>;
 
-#[derive(Debug, Serialize)]
-enum SourceAction {
-    None,
-    Cpp,
-    Nasm,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(from = "PathBuf")]
 pub struct SourceItem {
     input: PathBuf,
-    action: SourceAction,
 }
 
 impl From<PathBuf> for SourceItem {
     fn from(s: PathBuf) -> Self {
-        SourceItem { input: s, action: SourceAction::None }
+        SourceItem { input: s }
     }
 }
 
