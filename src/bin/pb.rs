@@ -1,5 +1,5 @@
+use log::{info, trace};
 use std::path::PathBuf;
-use log::{trace, info};
 
 use exitfailure::ExitFailure;
 use structopt::StructOpt;
@@ -24,7 +24,7 @@ struct Bonnibel {
 enum Command {
     /// Initialize the build directory
     #[structopt(name = "init")]
-    InitCommand {
+    Init {
         /// Initialize a build in release mode
         #[structopt(short = "r", long = "release")]
         release: bool,
@@ -32,14 +32,13 @@ enum Command {
 
     /// Synchronize external packages
     #[structopt(name = "sync")]
-    SyncCommand {
-    },
+    Sync {},
 
     /// Run the build via Ninja
     ///
     /// This command is mainly a shortcut for invoking Ninja to run the build.
     #[structopt(name = "build")]
-    BuildCommand {
+    Build {
         /// Build in release mode
         #[structopt(short = "r", long = "release")]
         release: bool,
@@ -59,12 +58,23 @@ fn main() -> Result<(), ExitFailure> {
     let proj = Project::load(&path)?;
     info!("Loaded project `{}` with {} modules.", proj.name, proj.modules.len());
 
-    let pb = indicatif::ProgressBar::new(100);
-    pb.set_style(indicatif::ProgressStyle::default_bar()
-        .template("[{elapsed_precise}] {bar:50.cyan/blue} {pos:>4}/{len:4} {msg}")
-        .progress_chars("##-"));
+    match opts.command {
+        Command::Init { release } => {
+            let mut p = PathBuf::from(&proj.root);
+            p.push(if release { "build.release" } else { "build.debug" });
+            proj.init(&p)?;
+        }
+        _ => {}
+    }
 
     /*
+    let pb = indicatif::ProgressBar::new(100);
+    pb.set_style(
+        indicatif::ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] {bar:50.cyan/blue} {pos:>4}/{len:4} {msg}")
+            .progress_chars("##-"),
+    );
+
     for _ in 1..100 {
         std::thread::sleep(std::time::Duration::from_millis(10));
         //pb.println(format!("[+] finished #{}", i));
@@ -77,5 +87,4 @@ fn main() -> Result<(), ExitFailure> {
 }
 
 #[test]
-fn test_a_thing() {
-}
+fn test_a_thing() {}

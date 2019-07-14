@@ -1,0 +1,6 @@
+use_small_heuristics = "Max"
+use_try_shorthand = true
+# imports_layout = "HorizontalVertical"
+# match_block_trailing_comma = true
+# report_todo = "Unnumbered"
+# overflow_delimited_expr = true
