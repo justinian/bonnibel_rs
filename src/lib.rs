@@ -95,38 +95,52 @@ impl Project {
             .map_err(tera_failure)
             .context("parsing templates")?;
 
-        let build_files: Vec<PathBuf> = Vec::new();
+        template_path.pop();
+        let mut build_files: Vec<PathBuf> = Vec::new();
+        let mut templates: Vec<PathBuf> = Vec::new();
 
         for (name, m) in &self.modules {
-            for t in m.template_names(name.as_str()) {
-                template_path.pop();
-                template_path.push(t.as_str());
-                if !template_path.exists() {
-                    continue;
-                }
+            println!("Generating for {}", &name);
+            let template = m.template_name(name.as_str(), template_path.clone())?;
 
-                let mut build_file = build_dir.to_path_buf();
-                build_file.push(format!("{}.ninja", name));
+            let mut build_file = build_dir.to_path_buf();
+            build_file.push(format!("{}.ninja", name));
 
-                let mut ctx = Context::new();
-                ctx.insert("module", &m);
-                ctx.insert("name", &name);
-                ctx.insert("buildfile", &build_file);
-                ctx.insert("vars", &self.vars);
-                ctx.insert("depmods", &m.depmods(self)?);
-                ctx.insert("deplibs", &m.deplibs(self)?);
-                ctx.insert("depexes", &m.depexes(self)?);
+            let mut ctx = Context::new();
+            ctx.insert("module", &m);
+            ctx.insert("name", &name);
+            ctx.insert("buildfile", &build_file);
+            ctx.insert("vars", &self.vars);
+            ctx.insert("depmods", &m.depmods(self)?);
+            ctx.insert("deplibs", &m.deplibs(self)?);
+            ctx.insert("depexes", &m.depexes(self)?);
 
-                let contents = tera.render(t.as_str(), ctx)
-                    .map_err(tera_failure)?
-                    .into_bytes();
+            let contents = tera.render(template.file_name().unwrap().to_str().unwrap(), ctx)
+                .map_err(tera_failure)?
+                .into_bytes();
 
-                let mut build_file_out = std::fs::File::create(build_file)
-                    .context("creating build file")?;
+            let mut build_file_out = std::fs::File::create(&build_file)
+                .context("creating build file")?;
 
-                build_file_out.write_all(&contents)
-                    .context("writing build file contents")?;
-            }
+            build_file_out.write_all(&contents)
+                .context("writing build file contents")?;
+
+            build_files.push(build_file);
+            templates.push(template);
+        }
+
+        for (target, mods) in &self.targets {
+            println!("{}: {:?}", target, mods);
+            let mut target_root = build_dir.to_path_buf();
+            target_root.push(target);
+
+            std::fs::create_dir_all(target_root)
+                .context("creating target output directory")?;
+
+            let mut build_file = build_dir.to_path_buf();
+            build_file.push("target.ninja");
+
+            build_files.push(build_file);
         }
 
         Ok(())

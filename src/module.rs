@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use failure::format_err;
 use serde::{Deserialize, Serialize};
 
 use super::Project;
@@ -59,11 +60,18 @@ pub enum ModuleKind {
 }
 
 impl Module {
-    pub fn template_names(&self, name: &str) -> Vec<String> {
-        vec![
-            format!("{}.{}.j2", self.kind.file_name(), name),
-            format!("{}.default.j2", self.kind.file_name()),
-        ]
+    pub fn template_name(&self, name: &str, mut path: PathBuf) -> Result<PathBuf> {
+        path.push(format!("{}.{}.j2", self.kind.file_name(), name));
+        if path.exists() {
+            Ok(path)
+        } else {
+            path.set_file_name(format!("{}.default.j2", self.kind.file_name()));
+            if path.exists() {
+                Ok(path)
+            } else {
+                Err(format_err!("Missing template for module '{}'.", name))
+            }
+        }
     }
 
     pub fn depmods<'a>(&self, proj: &'a Project) -> Result<Vec<&'a Module>> {
