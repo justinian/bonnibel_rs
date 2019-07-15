@@ -3,7 +3,7 @@ use std::error::Error as StdError;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use failure::{err_msg, Fail, ResultExt};
+use failure::{err_msg, Fail, format_err, ResultExt};
 use serde::Deserialize;
 use tera::{Context, Tera};
 
@@ -100,8 +100,8 @@ impl Project {
         let mut templates: Vec<PathBuf> = Vec::new();
 
         for (name, m) in &self.modules {
-            println!("Generating for {}", &name);
-            let template = m.template_name(name.as_str(), template_path.clone())?;
+            let (template_path, template_file) =
+                template_from_options(&template_path, name, m.kind_name())?;
 
             let mut build_file = build_dir.to_path_buf();
             build_file.push(format!("{}.ninja", name));
@@ -115,7 +115,7 @@ impl Project {
             ctx.insert("deplibs", &m.deplibs(self)?);
             ctx.insert("depexes", &m.depexes(self)?);
 
-            let contents = tera.render(template.file_name().unwrap().to_str().unwrap(), ctx)
+            let contents = tera.render(template_file.as_str(), ctx)
                 .map_err(tera_failure)?
                 .into_bytes();
 
@@ -126,21 +126,41 @@ impl Project {
                 .context("writing build file contents")?;
 
             build_files.push(build_file);
-            templates.push(template);
+            templates.push(template_path);
         }
 
         for (target, mods) in &self.targets {
-            println!("{}: {:?}", target, mods);
+            let (template_path, template_file) =
+                template_from_options(&template_path, target, "target")?;
+
             let mut target_root = build_dir.to_path_buf();
             target_root.push(target);
 
-            std::fs::create_dir_all(target_root)
+            std::fs::create_dir_all(&target_root)
                 .context("creating target output directory")?;
 
-            let mut build_file = build_dir.to_path_buf();
+            let mut build_file = target_root.to_path_buf();
             build_file.push("target.ninja");
 
+            let mut ctx = Context::new();
+            ctx.insert("target", &target);
+            ctx.insert("modules", &mods);
+            ctx.insert("buildfile", &build_file);
+            ctx.insert("vars", &self.vars);
+
+            let contents = tera.render(template_file.as_str(), ctx)
+                .map_err(tera_failure)?
+                .into_bytes();
+
+            println!("Writing {:?}", build_file);
+            let mut build_file_out = std::fs::File::create(&build_file)
+                .context("creating build file")?;
+
+            build_file_out.write_all(&contents)
+                .context("writing build file contents")?;
+
             build_files.push(build_file);
+            templates.push(template_path);
         }
 
         Ok(())
@@ -148,5 +168,23 @@ impl Project {
 
     pub fn module(&self, name: &str) -> Result<&Module> {
         self.modules.get(name).ok_or(err_msg("couldn't find module"))
+    }
+}
+
+fn template_from_options(root: &Path, name: &str, kind: &str) -> Result<(PathBuf, String)> {
+    let mut path = root.to_path_buf();
+    let file = format!("{}.{}.j2", kind, name);
+    path.push(&file);
+
+    if path.exists() {
+        Ok((path, file))
+    } else {
+        let file = format!("{}.default.j2", kind);
+        path.set_file_name(&file);
+        if path.exists() {
+            Ok((path, file))
+        } else {
+            Err(format_err!("Missing template for module '{}'.", name))
+        }
     }
 }
