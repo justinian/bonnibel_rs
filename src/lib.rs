@@ -4,6 +4,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use failure::{err_msg, Fail, format_err, ResultExt};
+use git2::{DescribeFormatOptions, DescribeOptions, Repository};
+use semver::{Identifier, Version};
 use serde::Deserialize;
 use tera::{Context, Tera};
 
@@ -31,6 +33,9 @@ pub struct Project {
     #[serde(skip)]
     pub root: PathBuf,
 
+    #[serde(skip)]
+    pub config_file: PathBuf,
+
     #[serde(default)]
     vars: HashMap<String, String>,
 
@@ -51,6 +56,8 @@ impl Project {
             .parent()
             .unwrap()
             .to_path_buf();
+
+        proj.config_file = filename.to_path_buf();
 
         proj.update_dependencies();
         //println!("{:?}", proj);
@@ -88,6 +95,10 @@ impl Project {
     pub fn init(&self, build_dir: &Path) -> Result<()> {
         std::fs::create_dir_all(build_dir).context("creating build output directory")?;
 
+        let version = get_version(&self.root)
+            .context("Getting current version")?;
+        println!("Found version: {}", version);
+
         let mut template_path = self.templates.clone();
         template_path.push("*");
 
@@ -106,6 +117,9 @@ impl Project {
             let mut build_file = build_dir.to_path_buf();
             build_file.push(format!("{}.ninja", name));
 
+            let mut build_file_out = std::fs::File::create(&build_file)
+                .context("creating build file")?;
+
             let mut ctx = Context::new();
             ctx.insert("module", &m);
             ctx.insert("name", &name);
@@ -118,9 +132,6 @@ impl Project {
             let contents = tera.render(template_file.as_str(), ctx)
                 .map_err(tera_failure)?
                 .into_bytes();
-
-            let mut build_file_out = std::fs::File::create(&build_file)
-                .context("creating build file")?;
 
             build_file_out.write_all(&contents)
                 .context("writing build file contents")?;
@@ -152,7 +163,6 @@ impl Project {
                 .map_err(tera_failure)?
                 .into_bytes();
 
-            println!("Writing {:?}", build_file);
             let mut build_file_out = std::fs::File::create(&build_file)
                 .context("creating build file")?;
 
@@ -162,6 +172,50 @@ impl Project {
             build_files.push(build_file);
             templates.push(template_path);
         }
+
+        template_path.push("build.ninja.j2");
+
+        let mut build_file = build_dir.to_path_buf();
+        build_file.push("build.ninja");
+
+        build_files.push(build_file.clone());
+        templates.push(template_path);
+
+        let target_names: Vec<&String> = self.targets.keys().collect();
+
+        let sha = format!("{}", version.build[0]);
+        let version_string = format!("{}", version);
+
+        let mut ctx = Context::new();
+        ctx.insert("targets", &target_names);
+        ctx.insert("modules", &self.modules);
+        ctx.insert("vars", &self.vars);
+        ctx.insert("buildroot", &build_dir);
+        ctx.insert("srcroot", &self.root);
+        ctx.insert("modulefile", &self.config_file);
+        ctx.insert("version_major", &version.major );
+        ctx.insert("version_minor", &version.minor );
+        ctx.insert("version_patch", &version.patch );
+        ctx.insert("version_sha", &sha);
+        ctx.insert("version", &version_string);
+        ctx.insert("generator", "/path/to/pb");
+        ctx.insert("buildfiles", &build_files);
+        ctx.insert("templates", &templates);
+
+        // Top level buildfile cannot use an absolute path or ninja won't
+        // reload itself properly on changes.
+        // See: https://github.com/ninja-build/ninja/issues/1240
+        ctx.insert("buildfile", "build.ninja");
+
+        let contents = tera.render("build.ninja.j2", ctx)
+            .map_err(tera_failure)?
+            .into_bytes();
+
+        let mut build_file_out = std::fs::File::create(&build_file)
+            .context("creating build file")?;
+
+        build_file_out.write_all(&contents)
+            .context("writing build file contents")?;
 
         Ok(())
     }
@@ -187,4 +241,30 @@ fn template_from_options(root: &Path, name: &str, kind: &str) -> Result<(PathBuf
             Err(format_err!("Missing template for module '{}'.", name))
         }
     }
+}
+
+fn get_version(root: &Path) -> Result<Version> {
+    let repo = Repository::open(root)
+        .context("opening git repository")?;
+
+    let desc = repo
+        .describe(DescribeOptions::new().max_candidates_tags(100))
+        .context("getting git description")?
+        .format(Some(DescribeFormatOptions::new()
+                     .abbreviated_size(0)
+                     .dirty_suffix("+dirty")))
+        .context("formatting git description")?;
+
+    let mut v = Version::parse(desc.as_str())
+        .unwrap_or_else(|_| Version::new(0,0,0));
+
+    let head = repo
+        .revparse_single("HEAD")
+        .context("finding git head revision")?
+        .short_id()
+        .context("getting git head revision id")?;
+
+    v.build.insert(0,
+        Identifier::AlphaNumeric(head.as_str().unwrap().to_string()));
+    Ok(v)
 }
