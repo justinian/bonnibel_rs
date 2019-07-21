@@ -1,66 +1,50 @@
-# Bonnibel, the jsix OS build tool
+# Bonnibel
 
-Bonnibel (formerly _Popcorn Build_) is a tool for automating several of the
-tasks common to jsix's development:
+Bonnibel (`pb` for short) builds [Ninja][] build files for a set of modules.
+Bonnibel is a thin wrapper around [Tera][] templates defining both _modules_
+to be built and the _targets_ to build them for. This allows expressive power
+in using Ninja's simple but otherwise very powerful build definition language.
 
-## Ninja build file generation
+For example, Bonnibel was created for [jsix][], where I needed the ability
+to build tools for my local native environment, use those tools to make output
+files used by other build stages, and build the bootloader, kernel and
+user-space applications all with different compiler and linker options.
+Complicating things even more, several libraries need to be built and used by
+applications on multiple target environments.
 
-Command: `pb init`
+[Ninja]: https://ninja-build.org
+[Tera]: https://tera.netlify.com/
+[jsix]: https://github.com/justinian/jsix
 
-Bonnibel's main purpose is [Ninja][] build file generation. It takes a fairly
-hands-off approach, with the project specifying most of the templates for the
-build files. The two main things that Bonnibel attempts to help with are:
+## Install
 
-* Modularization - Code is grouped into a set of modules, either libraries or
-  executables, and may expose include directories. Other modules depending on a
-  module will automatically use the exported include directories and link the
-  produced libraries.
+If you have Rust and cargo installed, then you can `cargo install bonnibel`.
+Otherwise, please see the latest [prebuilt release][releases].
 
-* Multiple target platforms - Modules may or may not explicitly target a
-  specific platform. Platforms can have their own set of build configuration.
-  For a given platform, Bonnibel will build all modules explicitly targeting
-  that platform plus all their dependencies.
+[releases]: https://github.com/justinian/bonnibel/releases
 
-Bonnibel takes a YAML file describing a project, and generates the necessary
-Ninja build files to build all the described modules for their necessary target
-platforms.
+## Usage
 
-For example, when building the jsix kernel, the build machine needs to build a
-`makerd` tool to build the initial ramdisk. `makerd` depends on the `initrd`
-library that defines the ramdisk structure. The kernel also depends on the same
-library, but in a completely different build environment. Thus the `initrd`
-library module will be built for both the kernel's target platform, and for the
-build machine's native platform.
+```Bonnibel 2.0.0
+Justin C. Miller <justin@devjustinian.com>
+Bonnibel, the jsix OS build tool
 
-[Ninja]: https://ninja-build.org/
+USAGE:
+    pb [FLAGS] [OPTIONS] <SUBCOMMAND>
 
+FLAGS:
+    -h, --help         Prints help information
+    -V, --version      Prints version information
+    -v, --verbosity    Pass many times for more log output
 
-## External dependency syncing
+OPTIONS:
+    -d, --dir <build_dir>       The build directory to use (default "build")
+    -f, --file <config_file>    The modules file to read from (default "modules.yaml")
 
-Command: `pb sync`, `pb override`
-
-Bonnibel can sync prebuilt versions of external dependencies. These need not be
-libraries, code, or any other type of file. Bonnibel thinks of them merely as
-project directory _overlays_. For example, while it is possible to manually
-build the custom LLVM sysroot for building the jsix kernel, the build process
-requires large source downloads and a lengthy build process. Since this rarely
-changes, the jsix project default is to sync a pre-built package. Bonnibel
-eases this process by automatically syncing and caching these dependencies for
-you.
-
-It is also possible to override this behavior and tell bonnibel that you want
-to use your own version of any of these dependencies for doing local
-development or testing on those items.
-
-
-## Running the generated build
-
-Command: `pb build`
-
-This is a convenience function which will run the `init` and `sync` steps if
-needed, then call out to Ninja to run the build.
-
-
-## Configuration file
-
-Bonnibel reads a YAML file called `bonnibel.yaml` in the project root directory.
+SUBCOMMANDS:
+    build       Run the build via Ninja
+    generate    Regenerate the build files
+    help        Prints this message or the help of the given subcommand(s)
+    init        Initialize the build directory and options
+    sync        Synchronize external packages
+```
