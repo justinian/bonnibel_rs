@@ -1,12 +1,13 @@
 [package]
 name = "bonnibel"
-version = "2.0.0"
+version = "2.0.1"
 authors = ["Justin C. Miller <justin@devjustinian.com>"]
 description = "Bonnibel, the jsix OS build tool"
 edition = "2018"
 license = "MIT"
 homepage = "https://github.com/justinian/bonnibel"
 repository = "https://github.com/justinian/bonnibel"
+readme = "README.md"
 
 [dependencies]
 clap-verbosity-flag = "0.2.0"
