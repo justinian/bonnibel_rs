@@ -37,6 +37,9 @@ pub struct Module {
     #[serde(default)]
     defines: Vec<String>,
 
+    #[serde(default)]
+    includes: Vec<PathBuf>,
+
     source: Vec<SourceItem>,
 
     output: PathBuf,
@@ -49,10 +52,7 @@ pub struct Module {
 #[serde(tag = "kind")]
 pub enum ModuleKind {
     #[serde(rename = "lib")]
-    Library {
-        #[serde(default)]
-        includes: Vec<PathBuf>,
-    },
+    Library,
 
     #[serde(rename = "exe")]
     Executable { target: String },

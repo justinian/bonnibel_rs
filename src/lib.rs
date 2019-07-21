@@ -1,10 +1,12 @@
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::error::Error as StdError;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use failure::{err_msg, Fail, format_err, ResultExt};
 use git2::{DescribeFormatOptions, DescribeOptions, Repository};
+use log::{debug, info, trace};
 use semver::{Identifier, Version};
 use serde::Deserialize;
 use tera::{Context, Tera};
@@ -13,6 +15,8 @@ mod module;
 use module::{Module, ModuleKind};
 
 type Result<T> = std::result::Result<T, failure::Error>;
+
+const VAR_FILE_NAME: &'static str = ".bonnibel_vars";
 
 fn tera_failure(e: tera::Error) -> failure::Error {
     let mut base = failure::Context::new(e.to_string());
@@ -48,16 +52,20 @@ pub struct Project {
 impl Project {
     pub fn load(filename: &Path) -> Result<Project> {
         let config = std::fs::read_to_string(filename).context("reading config file")?;
-
         let mut proj: Project = serde_yaml::from_str(&config).context("parsing config file")?;
 
-        proj.root = std::fs::canonicalize(filename)
-            .context("finding project root")?
+        proj.config_file = std::fs::canonicalize(filename)
+            .context("finding project path")?
+            .to_path_buf();
+
+        trace!("Parsed config file {:?}", proj.config_file);
+
+        proj.root = proj.config_file
             .parent()
             .unwrap()
             .to_path_buf();
 
-        proj.config_file = filename.to_path_buf();
+        debug!("Source root is {:?}", proj.root);
 
         proj.update_dependencies();
         //println!("{:?}", proj);
@@ -92,14 +100,53 @@ impl Project {
         }
     }
 
-    pub fn init(&self, build_dir: &Path) -> Result<()> {
+    pub fn parse_vars(&mut self, vars: Vec<String>) -> Result<()> {
+        for mut name in vars {
+            if let Some(index) = name.find('=') {
+                let value = name.split_off(index+1);
+                name.pop(); // Strip off the =
+                self.vars.insert(name, value);
+            } else {
+                return Err(format_err!("Variable {} does not parse", name));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn load_vars(&mut self, build_dir: &Path) -> Result<()> {
+        let mut var_file = build_dir.to_path_buf();
+        var_file.push(VAR_FILE_NAME);
+
+        let var_file = std::fs::read_to_string(var_file).context("reading state file")?;
+        self.vars = serde_yaml::from_str(&var_file).context("parsing state file")?;
+        debug!("Loaded existing state: {:?}", self.vars);
+
+        Ok(())
+    }
+
+    pub fn initialize(&self, build_dir: &Path) -> Result<()> {
+        info!("Creating build directory at: {:?}", build_dir);
         std::fs::create_dir_all(build_dir).context("creating build output directory")?;
 
+        let mut var_file = build_dir.to_path_buf();
+        var_file.push(VAR_FILE_NAME);
+
+        let mut var_file = std::fs::File::create(var_file)?;
+        serde_yaml::to_writer(&var_file, &self.vars)?;
+        var_file.write(b"\n")?;
+
+        Ok(())
+    }
+
+    pub fn generate(&self, build_dir: &Path) -> Result<()> {
         let version = get_version(&self.root)
             .context("Getting current version")?;
-        println!("Found version: {}", version);
 
-        let mut template_path = self.templates.clone();
+        println!("Generating build files for {} version {}", self.name, version);
+
+        let mut template_path = self.root.clone();
+        template_path.push(&self.templates);
         template_path.push("*");
 
         let tera = Tera::new(template_path.to_str().unwrap())
@@ -198,9 +245,13 @@ impl Project {
         ctx.insert("version_patch", &version.patch );
         ctx.insert("version_sha", &sha);
         ctx.insert("version", &version_string);
-        ctx.insert("generator", "/path/to/pb");
         ctx.insert("buildfiles", &build_files);
         ctx.insert("templates", &templates);
+
+        let generator = env::current_exe()
+            .expect("Couldn't get current executable name!");
+        ctx.insert("generator", &generator);
+        debug!("Generator is {:?}", generator);
 
         // Top level buildfile cannot use an absolute path or ninja won't
         // reload itself properly on changes.
