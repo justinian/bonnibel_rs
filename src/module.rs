@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -6,7 +7,7 @@ use super::Project;
 
 type Result<T> = std::result::Result<T, failure::Error>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(from = "PathBuf")]
 pub struct SourceItem {
     name: String,
@@ -28,7 +29,7 @@ impl From<PathBuf> for SourceItem {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Module {
     #[serde(alias = "deps")]
     #[serde(default)]
@@ -48,7 +49,7 @@ pub struct Module {
     pub kind: ModuleKind,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum ModuleKind {
     #[serde(rename = "lib")]
@@ -60,11 +61,22 @@ pub enum ModuleKind {
 
 impl Module {
     pub fn depmods<'a>(&self, proj: &'a Project) -> Result<Vec<&'a Module>> {
-        let mut v = Vec::new();
-        for name in self.depends.iter() {
-            v.push(proj.module(&name.as_str())?);
+        let mut open = self.depends.iter()
+            .map(|n| proj.module(n))
+            .collect::<Result<Vec<&'a Module>>>()?;
+
+        let mut closed = HashSet::new();
+        while let Some(module) = open.pop() {
+            closed.insert(module);
+            for dep in &module.depends {
+                let dep = proj.module(&dep)?;
+                if !closed.contains(dep) {
+                    open.push(dep);
+                }
+            }
         }
-        Ok(v)
+
+        Ok(closed.into_iter().collect())
     }
 
     pub fn deplibs<'a>(&self, proj: &'a Project) -> Result<Vec<&'a Module>> {

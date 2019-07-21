@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::process::Command as ExecCommand;
 
 use exitfailure::ExitFailure;
 use failure::ResultExt;
@@ -45,11 +46,7 @@ enum Command {
     ///
     /// This command is mainly a shortcut for invoking Ninja to run the build.
     #[structopt(name = "build")]
-    Build {
-        /// Build in release mode
-        #[structopt(short = "r", long = "release")]
-        release: bool,
-    },
+    Build,
 }
 
 fn main() -> Result<(), ExitFailure> {
@@ -79,13 +76,22 @@ fn main() -> Result<(), ExitFailure> {
             proj.parse_vars(vars)?;
             proj.initialize(&build_dir)?;
             proj.generate(&build_dir)?;
-        }
+        },
 
         Command::Regenerate => {
             proj.load_vars(&build_dir)?;
             proj.generate(&build_dir)?;
-        }
+        },
 
+        Command::Build => {
+            ExecCommand::new("ninja")
+                .arg("-C")
+                .arg(&build_dir)
+                .spawn()
+                .context("Running ninja")?
+                .wait()
+                .context("Waiting for ninja child process")?;
+        }
         _ => {}
     }
 
