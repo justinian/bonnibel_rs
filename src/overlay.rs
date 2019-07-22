@@ -1,12 +1,13 @@
 use std::collections::hash_map::DefaultHasher;
-use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use failure::{format_err, ResultExt};
 use reqwest::Url;
 use serde::Deserialize;
+use tempfile::NamedTempFile;
 type Result<T> = std::result::Result<T, failure::Error>;
 
 #[derive(Debug, Deserialize)]
@@ -83,12 +84,37 @@ impl Overlay {
 
         length(resp.content_length().unwrap_or(0));
 
+        let mut temp = NamedTempFile::new()?;
         let mut pw: ProgressWriter<_, G> = ProgressWriter{
-            writer: File::create(&self.cached)?,
+            writer: &mut temp,
             update: update,
         };
-        resp.copy_to(&mut pw)?;
 
+        if let Err(e) = resp.copy_to(&mut pw) {
+            temp.close()?;
+            Err(e)?
+        } else {
+            temp.persist(&self.cached)?;
+            Ok(())
+        }
+    }
+
+    pub fn extract(&self, root: &Path) -> Result<()> {
+        let mut target = root.to_path_buf();
+        target.push(&self.path);
+
+        std::fs::create_dir_all(&target)
+            .context("creating target directory")?;
+
+        Command::new("tar")
+            .arg("xf")
+            .arg(&self.cached)
+            .arg("-C")
+            .arg(target)
+            .spawn()
+            .context("Untarring overlay")?
+            .wait()
+            .context("Waiting for tar child process")?;
         Ok(())
     }
 }

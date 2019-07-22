@@ -110,6 +110,7 @@ fn main() -> Result<(), ExitFailure> {
 
             for o in proj.overlays.iter_mut() {
                 o.compute_for_cache(&cache)?;
+
                 if !o.is_cached() {
                     let pb = ProgressBar::new(100);
                     pb.set_style(
@@ -117,15 +118,18 @@ fn main() -> Result<(), ExitFailure> {
                             .template("[{elapsed:>3}] {bar:40.cyan/blue} {bytes:>8}/{total_bytes:8} {wide_msg}")
                             .progress_chars("##-"));
 
-                    pb.println(format!("# Syncing {}", &o.filename));
+                    pb.println(format!("Downloading {}...", &o.filename));
                     pb.set_message("Downloading");
 
                     o.download(
                         |n| pb.set_length(n),
                         |n| pb.inc(n))?;
-                    std::thread::sleep(std::time::Duration::from_millis(400));
-                    //pb.finish_and_clear();
+
+                    pb.finish_and_clear();
                 }
+
+                println!("Extracting {}...", &o.filename);
+                o.extract(&proj.root)?;
             }
 
         },
