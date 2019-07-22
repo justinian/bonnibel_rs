@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 use std::process::Command as ExecCommand;
 
+use directories::ProjectDirs;
 use exitfailure::ExitFailure;
-use failure::ResultExt;
+use failure::{err_msg, ResultExt};
+use indicatif::{ProgressBar, ProgressStyle};
 use structopt::StructOpt;
 
 use bonnibel::Project;
@@ -40,7 +42,11 @@ enum Command {
 
     /// Synchronize external packages
     #[structopt(name = "sync")]
-    Sync,
+    Sync {
+        /// Location of the download cache (default ~/.cache/bonnibel)
+        #[structopt(parse(from_os_str), short = "c", long = "cache")]
+        cache: Option<PathBuf>,
+    },
 
     /// Run the build via Ninja
     ///
@@ -50,6 +56,9 @@ enum Command {
 }
 
 fn main() -> Result<(), ExitFailure> {
+    let proj_dirs = ProjectDirs::from("dev", "jsix", "bonnibel")
+        .ok_or(err_msg("couldn't find home directory"))?;
+
     let opts = Bonnibel::from_args();
     opts.verbose.setup_env_logger("bonnibel")?;
 
@@ -91,25 +100,36 @@ fn main() -> Result<(), ExitFailure> {
                 .context("Running ninja")?
                 .wait()
                 .context("Waiting for ninja child process")?;
-        }
-        _ => {}
-    }
+        },
 
-    /*
-    let pb = indicatif::ProgressBar::new(100);
-    pb.set_style(
-        indicatif::ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] {bar:50.cyan/blue} {pos:>4}/{len:4} {msg}")
-            .progress_chars("##-"),
-    );
+        Command::Sync { cache } => {
+            let cache = match cache {
+                Some(path) => path,
+                None => proj_dirs.cache_dir().to_path_buf(),
+            };
 
-    for _ in 1..100 {
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        //pb.println(format!("[+] finished #{}", i));
-        pb.inc(1);
+            for o in proj.overlays.iter_mut() {
+                o.compute_for_cache(&cache)?;
+                if !o.is_cached() {
+                    let pb = ProgressBar::new(100);
+                    pb.set_style(
+                        ProgressStyle::default_bar()
+                            .template("[{elapsed:>3}] {bar:40.cyan/blue} {bytes:>8}/{total_bytes:8} {wide_msg}")
+                            .progress_chars("##-"));
+
+                    pb.println(format!("# Syncing {}", &o.filename));
+                    pb.set_message("Downloading");
+
+                    o.download(
+                        |n| pb.set_length(n),
+                        |n| pb.inc(n))?;
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                    //pb.finish_and_clear();
+                }
+            }
+
+        },
     }
-    pb.finish_with_message("done");
-    */
 
     Ok(())
 }

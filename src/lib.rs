@@ -14,6 +14,9 @@ use tera::{Context, Tera};
 mod module;
 use module::{Module, ModuleKind};
 
+mod overlay;
+use overlay::Overlay;
+
 type Result<T> = std::result::Result<T, failure::Error>;
 
 const VAR_FILE_NAME: &'static str = ".bonnibel_vars";
@@ -43,6 +46,9 @@ pub struct Project {
     #[serde(default)]
     vars: HashMap<String, String>,
 
+    #[serde(default)]
+    pub overlays: Vec<Overlay>,
+
     pub modules: HashMap<String, Module>,
 
     #[serde(skip)]
@@ -68,7 +74,6 @@ impl Project {
         debug!("Source root is {:?}", proj.root);
 
         proj.update_dependencies();
-        //println!("{:?}", proj);
         Ok(proj)
     }
 
