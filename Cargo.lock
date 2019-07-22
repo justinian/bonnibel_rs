@@ -127,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "bonnibel"
-version = "2.0.1"
+version = "2.1.0"
 dependencies = [
  "assert_cmd 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap-verbosity-flag 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
