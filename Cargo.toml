@@ -1,6 +1,6 @@
 [package]
 name = "bonnibel"
-version = "2.1.0"
+version = "2.2.0"
 authors = ["Justin C. Miller <justin@devjustinian.com>"]
 description = "Bonnibel, the jsix OS build tool"
 edition = "2018"
