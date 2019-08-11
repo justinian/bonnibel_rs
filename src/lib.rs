@@ -230,7 +230,9 @@ impl Project {
         let mut build_file = build_dir.to_path_buf();
         build_file.push("build.ninja");
 
-        build_files.push(build_file.clone());
+        // Can't push the whole path here or Ninja won't restart the
+        // build when it changes
+        build_files.push(PathBuf::from("build.ninja"));
         templates.push(template_path);
 
         let target_names: Vec<&String> = self.targets.keys().collect();
