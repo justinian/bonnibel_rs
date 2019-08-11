@@ -36,6 +36,9 @@ pub struct Module {
     pub depends: Vec<String>,
 
     #[serde(default)]
+    pub extras: Vec<PathBuf>,
+
+    #[serde(default)]
     defines: Vec<String>,
 
     #[serde(default)]
