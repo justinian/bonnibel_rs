@@ -53,6 +53,12 @@ enum Command {
     /// This command is mainly a shortcut for invoking Ninja to run the build.
     #[structopt(name = "build")]
     Build,
+
+    /// Run the clean via Ninja
+    ///
+    /// This command is mainly a shortcut for invoking Ninja to clean the build.
+    #[structopt(name = "clean")]
+    Clean,
 }
 
 fn main() -> Result<(), ExitFailure> {
@@ -102,6 +108,18 @@ fn main() -> Result<(), ExitFailure> {
                 .context("Waiting for ninja child process")?;
         },
 
+        Command::Clean => {
+            ExecCommand::new("ninja")
+                .arg("-C")
+                .arg(&build_dir)
+                .arg("-t")
+                .arg("clean")
+                .spawn()
+                .context("Running ninja clean")?
+                .wait()
+                .context("Waiting for ninja child process")?;
+        },
+
         Command::Sync { cache } => {
             let cache = match cache {
                 Some(path) => path,
@@ -115,7 +133,7 @@ fn main() -> Result<(), ExitFailure> {
                     let pb = ProgressBar::new(100);
                     pb.set_style(
                         ProgressStyle::default_bar()
-                            .template("[{elapsed:>3}] {bar:40.cyan/blue} {bytes:>8}/{total_bytes:8} {wide_msg}")
+                            .template("[{elapsed:>3}] {bar:60.cyan/blue} {bytes:>8}/{total_bytes:8} {wide_msg}")
                             .progress_chars("##-"));
 
                     pb.println(format!("Downloading {}...", &o.filename));
